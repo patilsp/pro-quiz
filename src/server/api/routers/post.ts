@@ -34,4 +34,13 @@ export const postRouter = createTRPCRouter({
   getSecretMessage: protectedProcedure.query(() => {
     return "you can now see this secret message!";
   }),
+
+  getSessionUser: protectedProcedure.query(({ ctx }) => {
+    // ctx.session.user is guaranteed to be defined
+    return {
+      id: ctx.session.user.id,
+      name: ctx.session.user.name,
+      email: ctx.session.user.email,
+    };
+  }),
 });

@@ -1,5 +1,11 @@
 import { type DefaultSession, type NextAuthConfig } from "next-auth";
-import DiscordProvider from "next-auth/providers/discord";
+import GoogleProvider from "next-auth/providers/google";
+import GitHubProvider from "next-auth/providers/github";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { MongoDBAdapter } from "@auth/mongodb-adapter";
+import clientPromise from "@/server/auth/mongoClient";
+import { z } from "zod";
+import bcrypt from "bcryptjs";
 
 /**
  * Module augmentation for `next-auth` types. Allows us to add custom properties to the `session`
@@ -22,24 +28,51 @@ declare module "next-auth" {
   // }
 }
 
+// Zod schema for credentials validation
+const credentialsSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(6),
+});
+
 /**
  * Options for NextAuth.js used to configure adapters, providers, callbacks, etc.
  *
  * @see https://next-auth.js.org/configuration/options
  */
 export const authConfig = {
+  adapter: MongoDBAdapter(clientPromise),
   providers: [
-    DiscordProvider,
-    /**
-     * ...add more providers here.
-     *
-     * Most other providers require a bit more work than the Discord provider. For example, the
-     * GitHub provider requires you to add the `refresh_token_expires_in` field to the Account
-     * model. Refer to the NextAuth.js docs for the provider you want to use. Example:
-     *
-     * @see https://next-auth.js.org/providers/github
-     */
+    GoogleProvider({
+      clientId: process.env.GOOGLE_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+    GitHubProvider({
+      clientId: process.env.GITHUB_ID!,
+      clientSecret: process.env.GITHUB_SECRET!,
+    }),
+    CredentialsProvider({
+      name: "Credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const parsed = credentialsSchema.safeParse(credentials);
+        if (!parsed.success) return null;
+        const client = await clientPromise;
+        const db = client.db();
+        const users = db.collection("users");
+        const user = await users.findOne({ email: parsed.data.email });
+        if (!user) return null;
+        const isValid = await bcrypt.compare(parsed.data.password, user.password);
+        if (!isValid) return null;
+        return { id: user._id.toString(), email: user.email, name: user.name };
+      },
+    }),
   ],
+  session: {
+    strategy: "jwt",
+  },
   callbacks: {
     session: ({ session, token }) => ({
       ...session,
@@ -49,4 +82,5 @@ export const authConfig = {
       },
     }),
   },
+  secret: process.env.NEXTAUTH_SECRET,
 } satisfies NextAuthConfig;

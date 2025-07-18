@@ -1,8 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 import { api } from "@/trpc/react";
+import { useSessionStore } from "./session-store";
 
 export function LatestPost() {
   const [latestPost] = api.post.getLatest.useSuspenseQuery();
@@ -15,6 +16,12 @@ export function LatestPost() {
       setName("");
     },
   });
+
+  const { user, setUser } = useSessionStore();
+
+  useEffect(() => {
+    if (session?.user) setUser(session.user);
+  }, [session, setUser]);
 
   return (
     <div className="w-full max-w-xs">
